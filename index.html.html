@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>S O F A // SPACE MODE</title>
+    <style>
+        /* Те самые шрифты */
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@900&family=Rajdhani:wght@300;500&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Montserrat', sans-serif;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: none;
+            /* Включаем 3D пространство для эффекта наклона */
+            perspective: 1000px;
+        }
+
+        #warpSpeed {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #cursorCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        /* Добавили transition для плавности наклона */
+        .container {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+            pointer-events: none;
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out; /* Плавность реакции на мышь */
+        }
+
+        /* --- СТИЛИ ТЕКСТА (БЕЗ ИЗМЕНЕНИЙ) --- */
+        .mega-title {
+            font-size: 8vw;
+            font-weight: 900;
+            text-transform: uppercase;
+            line-height: 1;
+            margin: 0;
+            position: relative;
+            letter-spacing: -5px;
+            
+            background: linear-gradient(
+                90deg,
+                #ff00cc,
+                #3333ff,
+                #00ccff,
+                #ff00cc
+            );
+            background-size: 300%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            
+            animation: gradient-flow 8s linear infinite;
+            filter: drop-shadow(0 0 30px rgba(138, 43, 226, 0.6));
+        }
+
+        .mega-title::before,
+        .mega-title::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; color: #fff; overflow: hidden;
+            z-index: -1; opacity: 0.7; clip-path: inset(50% 0 0 0);
+        }
+
+        .mega-title::before {
+            color: #0ff; text-shadow: 2px 0 #f0f;
+            animation: glitch-anim-1 3s infinite linear alternate-reverse;
+        }
+        .mega-title::after {
+            color: #f0f; text-shadow: -2px 0 #0ff;
+            animation: glitch-anim-2 2.5s infinite linear alternate-reverse;
+        }
+
+        .subtitle {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 2vw;
+            color: rgba(255, 255, 255, 0.8);
+            letter-spacing: 10px;
+            text-transform: uppercase;
+            margin-top: 10px;
+            font-weight: 500;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeSlideUp 2s ease forwards 1s;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            /* Добавим легкое пульсирование подзаголовку */
+            animation: fadeSlideUp 2s ease forwards 1s, breathe 4s ease-in-out infinite 3s;
+        }
+
+        .subtitle span { display: inline-block; color: #00ccff; }
+
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, transparent 40%, #000 120%);
+            z-index: 5; pointer-events: none;
+        }
+
+        /* --- КЕЙФРЕЙМЫ --- */
+        @keyframes gradient-flow { 0% { background-position: 0% 50%; } 100% { background-position: 300% 50%; } }
+        
+        @keyframes glitch-anim-1 {
+            0% { clip-path: inset(20% 0 80% 0); transform: translate(-2px, 1px); }
+            20% { clip-path: inset(60% 0 10% 0); transform: translate(2px, -1px); }
+            100% { clip-path: inset(30% 0 50% 0); transform: translate(2px, -1px); }
+        }
+        @keyframes glitch-anim-2 {
+            0% { clip-path: inset(10% 0 60% 0); transform: translate(2px, -1px); }
+            100% { clip-path: inset(20% 0 60% 0); transform: translate(-2px, 2px); }
+        }
+        @keyframes fadeSlideUp { to { opacity: 1; transform: translateY(0); } }
+        
+        /* Новая анимация дыхания */
+        @keyframes breathe {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); text-shadow: 0 0 20px rgba(0, 255, 255, 0.8); }
+        }
+        
+        @media (max-width: 768px) {
+            .mega-title { font-size: 15vw; letter-spacing: -2px; }
+            .subtitle { font-size: 4vw; letter-spacing: 5px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="overlay"></div>
+    <canvas id="warpSpeed"></canvas>
+    <canvas id="cursorCanvas"></canvas>
+
+    <!-- Добавили ID для JS манипуляций -->
+    <div class="container" id="textContainer">
+        <h1 class="mega-title" data-text="СОФА">СОФА</h1>
+        <div class="subtitle">с прошедшим <span>днем рождения</span></div>
+    </div>
+
+    <script>
+        /* ----------------------------------------------------
+           ЧАСТЬ 1: ФОН + ПАДАЮЩИЕ ЗВЕЗДЫ
+        ---------------------------------------------------- */
+        const starCanvas = document.getElementById('warpSpeed');
+        const starCtx = starCanvas.getContext('2d');
+        let width, height;
+        let stars = [];
+        let shootingStars = []; // Массив для комет
+        const STAR_COUNT = 800;
+        const SPEED = 2;
+
+        function initStars() {
+            width = starCanvas.width = window.innerWidth;
+            height = starCanvas.height = window.innerHeight;
+            stars = [];
+            for (let i = 0; i < STAR_COUNT; i++) {
+                stars.push({
+                    x: Math.random() * width - width/2,
+                    y: Math.random() * height - height/2,
+                    z: Math.random() * width
+                });
+            }
+        }
+
+        // Класс падающей звезды
+        class ShootingStar {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.len = Math.random() * 80 + 10;
+                this.speed = Math.random() * 10 + 6;
+                this.size = Math.random() * 1 + 0.1;
+                // Летят под углом 45 градусов
+                this.vx = this.speed;
+                this.vy = this.speed;
+                this.life = 1; 
+            }
+            draw() {
+                starCtx.strokeStyle = `rgba(255, 255, 255, ${this.life})`;
+                starCtx.lineWidth = this.size;
+                starCtx.beginPath();
+                starCtx.moveTo(this.x, this.y);
+                starCtx.lineTo(this.x - this.len, this.y - this.len);
+                starCtx.stroke();
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.01;
+            }
+        }
+
+        function drawStars() {
+            starCtx.fillStyle = 'rgba(0, 0, 0, 0.4)'; 
+            starCtx.fillRect(0, 0, width, height);
+            const cx = width / 2;
+            const cy = height / 2;
+
+            // Обычные звезды
+            for (let i = 0; i < stars.length; i++) {
+                let star = stars[i];
+                star.z -= SPEED;
+                if (star.z <= 0) {
+                    star.x = Math.random() * width - width/2;
+                    star.y = Math.random() * height - height/2;
+                    star.z = width;
+                }
+                const scale = 250 / star.z; 
+                const x2d = star.x * scale + cx;
+                const y2d = star.y * scale + cy;
+                const size = (1 - star.z / width) * 3;
+                const opacity = (1 - star.z / width);
+                
+                starCtx.beginPath();
+                starCtx.fillStyle = `rgba(220, 230, 255, ${opacity})`;
+                starCtx.arc(x2d, y2d, size, 0, Math.PI * 2);
+                starCtx.fill();
+            }
+
+            // Логика падающих звезд (редкий шанс появления)
+            if (Math.random() < 0.02) {
+                shootingStars.push(new ShootingStar());
+            }
+            for (let i = 0; i < shootingStars.length; i++) {
+                shootingStars[i].draw();
+                shootingStars[i].update();
+                if (shootingStars[i].life <= 0) {
+                    shootingStars.splice(i, 1);
+                    i--;
+                }
+            }
+
+            requestAnimationFrame(drawStars);
+        }
+
+        /* ----------------------------------------------------
+           ЧАСТЬ 2: МАГИЧЕСКИЙ КУРСОР + ШОКОВЫЕ ВОЛНЫ
+        ---------------------------------------------------- */
+        const cursorCanvas = document.getElementById('cursorCanvas');
+        const cursorCtx = cursorCanvas.getContext('2d');
+        let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
+        let cursorParticles = [];
+        let shockwaves = []; // Массив волн от клика
+
+        const container = document.getElementById('textContainer');
+
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            // 1. Искры
+            for(let i=0; i<3; i++) cursorParticles.push(new Spark(mouseX, mouseY));
+
+            // 2. 3D НАКЛОН ТЕКСТА (ПАРАЛЛАКС)
+            // Вычисляем отклонение от центра (-1 до 1)
+            let xCenter = window.innerWidth / 2;
+            let yCenter = window.innerHeight / 2;
+            let tiltX = (mouseX - xCenter) / xCenter;
+            let tiltY = (mouseY - yCenter) / yCenter;
+            
+            // Поворачиваем текст (максимум на 15 градусов)
+            container.style.transform = `rotateY(${tiltX * 15}deg) rotateX(${-tiltY * 15}deg)`;
+        });
+
+        // Добавляем эффект при клике
+        document.addEventListener('mousedown', () => {
+            shockwaves.push(new Shockwave(mouseX, mouseY));
+            // При клике выбрасываем больше частиц
+            for(let i=0; i<15; i++) cursorParticles.push(new Spark(mouseX, mouseY));
+        });
+
+        class Shockwave {
+            constructor(x, y) {
+                this.x = x; this.y = y;
+                this.radius = 1;
+                this.opacity = 1;
+                this.color = '#fff';
+            }
+            draw() {
+                cursorCtx.beginPath();
+                cursorCtx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+                cursorCtx.strokeStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                cursorCtx.lineWidth = 2;
+                cursorCtx.stroke();
+            }
+            update() {
+                this.radius += 5; // Скорость расширения
+                this.opacity -= 0.02; // Скорость исчезновения
+            }
+        }
+
+        class Spark {
+            constructor(x, y) {
+                this.x = x; this.y = y;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.life = 1.0;
+                this.decay = Math.random() * 0.03 + 0.01;
+                this.color = Math.random() > 0.5 ? '#00ccff' : '#ff00cc';
+                this.size = Math.random() * 3 + 1;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                this.size *= 0.95;
+            }
+            draw() {
+                cursorCtx.globalAlpha = this.life;
+                cursorCtx.fillStyle = this.color;
+                cursorCtx.beginPath();
+                cursorCtx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+                cursorCtx.fill();
+                cursorCtx.globalAlpha = 1;
+            }
+        }
+
+        function drawCursor() {
+            cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+            cursorCtx.globalCompositeOperation = 'lighter';
+
+            // Рисуем частицы
+            for (let i = 0; i < cursorParticles.length; i++) {
+                cursorParticles[i].update();
+                cursorParticles[i].draw();
+                if (cursorParticles[i].life <= 0) { cursorParticles.splice(i, 1); i--; }
+            }
+
+            // Рисуем ударные волны
+            for (let i = 0; i < shockwaves.length; i++) {
+                shockwaves[i].update();
+                shockwaves[i].draw();
+                if (shockwaves[i].opacity <= 0) { shockwaves.splice(i, 1); i--; }
+            }
+
+            // Ядро курсора
+            cursorCtx.shadowBlur = 15;
+            cursorCtx.shadowColor = '#fff';
+            cursorCtx.fillStyle = '#fff';
+            cursorCtx.beginPath();
+            cursorCtx.arc(mouseX, mouseY, 3, 0, Math.PI*2);
+            cursorCtx.fill();
+            cursorCtx.shadowBlur = 0;
+            cursorCtx.globalCompositeOperation = 'source-over';
+            
+            requestAnimationFrame(drawCursor);
+        }
+        
+        function resize() {
+            width = starCanvas.width = window.innerWidth;
+            height = starCanvas.height = window.innerHeight;
+            cursorCanvas.width = window.innerWidth;
+            cursorCanvas.height = window.innerHeight;
+            initStars();
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        drawStars();
+        drawCursor();
+
+    </script>
+</body>
+</html>
